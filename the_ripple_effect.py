@@ -37,8 +37,11 @@ def _configured_model():
 # Tried in order; a model that returns 404 is skipped automatically.
 MODEL_CANDIDATES = list(dict.fromkeys(
     [_configured_model(), "gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-flash-latest"]))
-DAYS = 3
-SCENES_PER_DAY = 5
+# Game length. A full game needs roughly 2 x (days x decisions) + 2 Gemini requests.
+# 2 days x 4 decisions = about 18 requests (fits small free-tier limits).
+# With billing enabled you can raise these, e.g. DAYS = 3 and SCENES_PER_DAY = 5.
+DAYS = 2
+SCENES_PER_DAY = 4
 SHOW_DIAGNOSTICS = True    # shows model name and response time in the sidebar; set False to hide
 
 METERS = ["mental_energy", "empathy", "anxiety", "social_connection"]
@@ -62,6 +65,9 @@ S = {
         "begin": "Begin",
         "setting_scene": "Setting the scene...",
         "check_key": "Check your API key and model name, then try again.",
+        "quota_msg": "The free Gemini limit for today has been used up on every available model. "
+                     "It resets daily. Try again later, switch to another API key, or turn on billing "
+                     "in Google AI Studio for much higher limits.",
         "mind_status": "Mind Status",
         "mental_energy": "Mental Energy",
         "empathy": "Empathy",
@@ -106,6 +112,9 @@ S = {
         "begin": "শুরু করুন",
         "setting_scene": "পরিবেশ তৈরি হচ্ছে...",
         "check_key": "API key ও মডেলের নাম দেখে আবার চেষ্টা করুন।",
+        "quota_msg": "আজকের বিনামূল্যের Gemini সীমা সব মডেলেই শেষ হয়ে গেছে। এটি প্রতিদিন রিসেট হয়। "
+                     "পরে আবার চেষ্টা করুন, অন্য API key ব্যবহার করুন, অথবা বেশি সীমার জন্য "
+                     "Google AI Studio-তে বিলিং চালু করুন।",
         "mind_status": "মনের অবস্থা",
         "mental_energy": "মানসিক শক্তি",
         "empathy": "সহানুভূতি",
@@ -257,12 +266,31 @@ def make_configs():
     return configs
 
 
-def call_models(client, prompt, configs, models, retries=3):
-    """Pure function (no Streamlit access) so it can also run in a background thread."""
+def _is_quota(msg):
+    return "429" in msg or "RESOURCE_EXHAUSTED" in msg
+
+
+def _is_missing(msg):
+    return "404" in msg or "NOT_FOUND" in msg
+
+
+def short_reason(msg):
+    if _is_missing(msg):
+        return "404 model not available"
+    if _is_quota(msg):
+        return "429 daily/minute quota used up"
+    return msg[:90]
+
+
+def call_models(client, prompt, configs, models, retries=2):
+    """Pure function (no Streamlit access) so it can also run in a background thread.
+    Quota (429) and missing-model (404) errors are NOT retried: they move on to the next model."""
+    skipped = []
     last = None
     for model in models:
         ci = 0
         attempt = 0
+        failed_reason = None
         while attempt < retries and ci < len(configs):
             attempt += 1
             try:
@@ -270,32 +298,42 @@ def call_models(client, prompt, configs, models, retries=3):
                 resp = client.models.generate_content(model=model, contents=prompt, config=configs[ci])
                 data = extract_json(resp.text)
                 return data, {"model": model, "seconds": round(time.time() - t0, 1),
-                              "cfg_idx": ci, "attempt": attempt}
+                              "cfg_idx": ci, "attempt": attempt, "skipped": skipped}
             except Exception as err:
                 last = err
                 msg = str(err)
-                if "404" in msg or "NOT_FOUND" in msg:
-                    break  # model unavailable: try the next one
+                failed_reason = short_reason(msg)
+                if _is_missing(msg) or _is_quota(msg):
+                    break
                 if "thinking" in msg.lower() and ci < len(configs) - 1:
                     ci += 1
                     attempt -= 1
                     continue
                 if attempt < retries:
                     time.sleep(0.8 * attempt)
-    raise RuntimeError(f"Gemini request failed: {last}")
+        skipped.append(f"{model}: {failed_reason}")
+    if skipped and all("429" in x for x in skipped):
+        raise RuntimeError("QUOTA")
+    raise RuntimeError(f"Gemini request failed. Tried: {'; '.join(skipped)}. Last error: {str(last)[:200]}")
 
 
 def record_info(info):
     st.session_state.thinking_idx = st.session_state.get("thinking_idx", 0) + info["cfg_idx"]
     st.session_state.last_call = {
         "model": info["model"], "seconds": info["seconds"], "attempt": info["attempt"],
+        "skipped": info.get("skipped", []),
         "thinking": THINKING_OPTIONS[min(st.session_state.thinking_idx, len(THINKING_OPTIONS) - 1)],
     }
 
 
 def ask_gemini(prompt):
     client = get_client(st.session_state.api_key)
-    data, info = call_models(client, prompt, make_configs(), MODEL_CANDIDATES)
+    try:
+        data, info = call_models(client, prompt, make_configs(), MODEL_CANDIDATES)
+    except RuntimeError as err:
+        if str(err) == "QUOTA":
+            raise RuntimeError(t("quota_msg")) from err
+        raise
     record_info(info)
     return data
 
@@ -696,5 +734,7 @@ if SHOW_DIAGNOSTICS:
         if lc:
             st.caption(f"Last call: model `{lc['model']}`, {lc['seconds']} s, "
                        f"thinking setting {lc['thinking']}, attempt {lc['attempt']}")
+            if lc.get("skipped"):
+                st.caption("Skipped before that: " + "; ".join(lc["skipped"]))
         else:
             st.caption("No call made yet.")
