@@ -7,8 +7,10 @@ Created by NilanjanC
 
 import json
 import os
+import random
 import re
 import time
+import uuid
 
 import streamlit as st
 from google import genai
@@ -21,7 +23,16 @@ OWNER = "NilanjanC"
 GAME_TITLE = "THE RIPPLE EFFECT"
 SUBTITLE = "Echoes of Choice"
 
-MODEL_NAME = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+def _configured_model():
+    try:
+        m = st.secrets.get("GEMINI_MODEL")
+    except Exception:
+        m = None
+    return m or os.environ.get("GEMINI_MODEL") or "gemini-3.8-flash"
+
+
+# Tried in order; a model that returns 404 is skipped automatically.
+MODEL_CANDIDATES = [_configured_model(), "gemini-3.8-flash", "gemini-flash-latest"]
 DAYS = 3
 SCENES_PER_DAY = 5
 USE_WEB_GROUNDING = True
@@ -103,17 +114,87 @@ def extract_json(text):
 def ask_gemini(prompt, grounded=False, retries=3):
     client = genai.Client(api_key=st.session_state.api_key)
     tools = [types.Tool(google_search=types.GoogleSearch())] if (grounded and USE_WEB_GROUNDING) else None
-    config = types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT, temperature=1.0, tools=tools)
+    config = types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT, temperature=1.2, tools=tools)
     last_err = None
-    for attempt in range(1, retries + 1):
-        try:
-            resp = client.models.generate_content(model=MODEL_NAME, contents=prompt, config=config)
-            return extract_json(resp.text)
-        except Exception as err:
-            last_err = err
-            if attempt < retries:
-                time.sleep(1.5 * attempt)
+    seen = []
+    for model in MODEL_CANDIDATES:
+        if model in seen:
+            continue
+        seen.append(model)
+        for attempt in range(1, retries + 1):
+            try:
+                resp = client.models.generate_content(model=model, contents=prompt, config=config)
+                return extract_json(resp.text)
+            except Exception as err:
+                last_err = err
+                if "404" in str(err) or "NOT_FOUND" in str(err):
+                    break  # model unavailable: try the next candidate
+                if attempt < retries:
+                    time.sleep(1.5 * attempt)
     raise RuntimeError(f"Gemini request failed: {last_err}")
+
+
+# --------------------------------------------------------------------------
+# Randomised life profile (makes every new game different)
+# --------------------------------------------------------------------------
+FIRST_NAMES = ["Maya", "Arjun", "Elena", "Tom", "Priya", "Daniel", "Sofia", "Kenji", "Amara", "Luca",
+               "Hana", "Omar", "Ruth", "Diego", "Mei", "Samir", "Nora", "Felix", "Zara", "Jonas"]
+JOBS = ["junior graphic designer", "primary school teacher", "hospital pharmacist", "call-centre agent",
+        "freelance writer", "warehouse supervisor", "bank clerk", "software tester", "nurse",
+        "cafe barista and part-time student", "delivery driver", "accountant", "librarian",
+        "restaurant line cook", "government office clerk", "retail store manager"]
+SETTINGS = ["a crowded big city with a long commute", "a quiet mid-sized town", "a coastal town in monsoon season",
+            "a busy suburb full of apartment blocks", "a university city", "a small town where everyone knows everyone",
+            "a rainy northern city in late autumn", "a hot, humid city in a heatwave"]
+LIFE_SITUATIONS = ["living with their parents and saving money", "sharing a flat with two roommates",
+                   "newly married and still adjusting", "caring for an elderly relative",
+                   "recently moved and knowing few people", "living alone and slightly lonely",
+                   "raising a young child with a partner", "paying off a loan and watching every expense"]
+QUIRKS = ["overthinks every message they send", "hates confrontation", "says yes too easily",
+          "is always running slightly late", "keeps a spotless to-do list but rarely finishes it",
+          "worries about what others think", "is fiercely independent and hates asking for help",
+          "scrolls their phone when stressed", "is generous but quietly resentful when unappreciated"]
+CAST_ROLES = ["a chatty coworker", "a demanding manager", "a close old friend", "a neighbour",
+              "a younger sibling", "a parent", "a quiet new colleague", "a roommate", "a childhood friend",
+              "a shopkeeper they see daily", "a partner", "a cousin who always needs favours"]
+THEMES = ["commute or transport trouble", "a favour requested by someone", "money and small expenses",
+          "a conflict or tense conversation", "social media or phone temptation", "a family call or message",
+          "a chance to help a stranger", "workplace pressure or a deadline", "a friend's invitation",
+          "a health or tiredness choice", "a chore that keeps getting postponed", "an unexpected compliment or criticism",
+          "an awkward silence or misunderstanding", "food, sleep or routine decision", "a moment of loneliness or boredom",
+          "a promise made earlier coming due", "an overheard conversation", "a surprise change of plans"]
+
+
+def new_profile():
+    rng = random.Random()
+    cast = rng.sample(CAST_ROLES, 3)
+    names = rng.sample(FIRST_NAMES, 4)
+    return {
+        "player_name": names[0],
+        "job": rng.choice(JOBS),
+        "setting": rng.choice(SETTINGS),
+        "life": rng.choice(LIFE_SITUATIONS),
+        "quirk": rng.choice(QUIRKS),
+        "cast": [f"{names[i + 1]} ({cast[i]})" for i in range(3)],
+        "themes": rng.sample(THEMES, DAYS * SCENES_PER_DAY),
+        "seed": uuid.uuid4().hex[:8],
+    }
+
+
+def profile_text():
+    p = st.session_state.profile
+    return (
+        f"PLAYER CHARACTER (keep consistent all game): {p['player_name']}, a {p['job']}, living in "
+        f"{p['setting']}, {p['life']}. Quirk: {p['quirk']}.\n"
+        f"RECURRING SUPPORTING CHARACTERS: {', '.join(p['cast'])}. Other people can appear too.\n"
+        f"Unique game seed (invent fresh details; never reuse a typical opening): {p['seed']}"
+    )
+
+
+def theme_for(day, idx):
+    n = (day - 1) * SCENES_PER_DAY + (idx - 1)
+    themes = st.session_state.profile["themes"]
+    return themes[n % len(themes)]
 
 
 # --------------------------------------------------------------------------
@@ -137,9 +218,11 @@ def meters_text():
 
 
 def scene_prompt(day, idx):
-    return (f"Start the game. It is Day {day}, scene {idx} of {SCENES_PER_DAY}. "
+    return (f"It is Day {day}, scene {idx} of {SCENES_PER_DAY}. "
+            f"{profile_text()}\n"
             f"Current meters: {meters_text()}\nPlayer decision pattern:\n{pattern_summary()}\n"
             f"Write an ordinary everyday situation fitting that moment of the day. "
+            f"Suggested theme for this scene: {theme_for(day, idx)}. "
             f"Reply with ONLY JSON in this schema:\n{SCENE_SCHEMA}")
 
 
@@ -157,7 +240,11 @@ def turn_prompt(scene, decision):
     else:
         nxt = (f"next_scene is decision {s.scene_in_day + 1} of {SCENES_PER_DAY} on Day "
                f"{s.day}, progressing naturally through the day.")
+    if not last_of_game:
+        nd, ni = (s.day + 1, 1) if last_of_day else (s.day, s.scene_in_day + 1)
+        nxt += f" Suggested theme for next_scene: {theme_for(nd, ni)}."
     return (
+        f"{profile_text()}\n"
         f"Current meters: {meters_text()}\n"
         f"Player decision pattern:\n{pattern_summary()}\n\n"
         f"Current situation: {scene['narrative']}\n"
@@ -171,7 +258,8 @@ def turn_prompt(scene, decision):
 
 def ending_prompt():
     return (
-        f"The game is over. Final meters: {meters_text()}\n"
+        f"The game is over. {profile_text()}\n"
+        f"Final meters: {meters_text()}\n"
         f"All decisions:\n{pattern_summary(last_n=len(st.session_state.history))}\n\n"
         "Write a warm, honest, non-judgmental reflection on who this player was over these days. "
         "Reply with ONLY JSON: "
@@ -185,7 +273,15 @@ def ending_prompt():
 # State
 # --------------------------------------------------------------------------
 def reset_game():
-    st.session_state.meters = {"mental_energy": 80, "empathy": 60, "anxiety": 30, "social_connection": 60}
+    rng = random.Random()
+    st.session_state.profile = new_profile()
+    # starting meters vary a little each game
+    st.session_state.meters = {
+        "mental_energy": rng.randint(65, 90),
+        "empathy": rng.randint(45, 75),
+        "anxiety": rng.randint(20, 45),
+        "social_connection": rng.randint(45, 75),
+    }
     st.session_state.history = []
     st.session_state.day = 1
     st.session_state.scene_in_day = 1
@@ -259,7 +355,8 @@ def screen_title():
              "from a missed bus to a coworker's request, sends a ripple through your mind and the "
              "people around you. There are no right answers, only consequences.")
     st.write("Watch your four meters: **Mental Energy**, **Empathy**, **Anxiety Level** and "
-             "**Social Connection**. The story is written live by AI, so no two playthroughs are alike.")
+             "**Social Connection**. The story is written live by AI, and every new game gives you a "
+             "different character, setting and cast, so no two playthroughs are alike.")
 
     if not st.session_state.api_key:
         st.info("Add your Gemini API key in the app Secrets (GEMINI_API_KEY) or in the sidebar to begin.")
