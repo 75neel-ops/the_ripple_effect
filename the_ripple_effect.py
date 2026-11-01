@@ -38,6 +38,7 @@ MODEL_CANDIDATES = [_configured_model(), "gemini-3.5-flash-lite", "gemini-3.8-fl
 DAYS = 3
 SCENES_PER_DAY = 5
 USE_WEB_GROUNDING = False  # True = live web lookups for insights (much slower)
+SHOW_DIAGNOSTICS = True    # shows model name and response time in the sidebar; set False to hide
 
 METERS = ["mental_energy", "empathy", "anxiety", "social_connection"]
 
@@ -263,9 +264,17 @@ def ask_gemini(prompt, grounded=False, retries=3):
         while attempt < retries:
             attempt += 1
             try:
+                t0 = time.time()
                 resp = client.models.generate_content(model=model, contents=prompt,
                                                       config=build_config(grounded))
-                return extract_json(resp.text)
+                data = extract_json(resp.text)
+                st.session_state.last_call = {
+                    "model": model,
+                    "seconds": round(time.time() - t0, 1),
+                    "thinking": THINKING_OPTIONS[st.session_state.get("thinking_idx", 0)],
+                    "attempt": attempt,
+                }
+                return data
             except Exception as err:
                 last_err = err
                 msg = str(err)
@@ -652,3 +661,14 @@ elif phase == "ripple":
 else:
     screen_end()
 footer()
+
+if SHOW_DIAGNOSTICS:
+    lc = st.session_state.get("last_call")
+    with st.sidebar:
+        st.markdown("**Diagnostics**")
+        st.caption("Models tried in order: " + ", ".join(dict.fromkeys(MODEL_CANDIDATES)))
+        if lc:
+            st.caption(f"Last call: model `{lc['model']}`, {lc['seconds']} s, "
+                       f"thinking setting {lc['thinking']}, attempt {lc['attempt']}")
+        else:
+            st.caption("No call made yet.")
