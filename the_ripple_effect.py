@@ -247,7 +247,7 @@ def extract_json(text):
 
 # Options tried for minimising "thinking" time (a big source of delay).
 # The last entry, "bare", sends only the system prompt (no JSON mode, no extra settings) as a final fallback.
-THINKING_OPTIONS = [{"thinking_budget": 0}, {"thinking_level": "minimal"}, {"thinking_level": "low"}, None, "bare"]
+THINKING_OPTIONS = [{"thinking_level": "minimal"}, {"thinking_budget": 0}, {"thinking_level": "low"}, None, "bare"]
 
 
 def make_configs():
@@ -295,6 +295,7 @@ def call_models(client, prompt, configs, models, retries=2):
         ci = 0
         attempt = 0
         failed_reason = None
+        busy_tries = 0
         while attempt < retries and ci < len(configs):
             attempt += 1
             try:
@@ -309,6 +310,12 @@ def call_models(client, prompt, configs, models, retries=2):
                 failed_reason = short_reason(msg)
                 if _is_missing(msg) or _is_quota(msg):
                     break
+                # Model temporarily overloaded (503): wait a little and retry the same model.
+                if ("503" in msg or "UNAVAILABLE" in msg or "overloaded" in msg.lower()) and busy_tries < 4:
+                    busy_tries += 1
+                    attempt -= 1
+                    time.sleep(1.5 * busy_tries)
+                    continue
                 bad_arg = "400" in msg or "INVALID_ARGUMENT" in msg
                 if (bad_arg or "thinking" in msg.lower()) and ci < len(configs) - 1:
                     ci += 1
