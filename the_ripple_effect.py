@@ -1,6 +1,7 @@
 """
 THE RIPPLE EFFECT (Echoes of Choice)
 A psychological life simulator powered by the Gemini API  -  Streamlit edition.
+Languages: English / Bengali (বাংলা)
 
 Created by NilanjanC
 """
@@ -23,6 +24,7 @@ OWNER = "NilanjanC"
 GAME_TITLE = "THE RIPPLE EFFECT"
 SUBTITLE = "Echoes of Choice"
 
+
 def _configured_model():
     try:
         m = st.secrets.get("GEMINI_MODEL")
@@ -35,28 +37,140 @@ def _configured_model():
 MODEL_CANDIDATES = [_configured_model(), "gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-flash-latest"]
 DAYS = 3
 SCENES_PER_DAY = 5
-USE_WEB_GROUNDING = False  # True adds live web lookups for psychology insights but makes each turn much slower
+USE_WEB_GROUNDING = False  # True = live web lookups for insights (much slower)
 
 METERS = ["mental_energy", "empathy", "anxiety", "social_connection"]
-METER_LABELS = {
-    "mental_energy": "Mental Energy",
-    "empathy": "Empathy",
-    "anxiety": "Anxiety Level",
-    "social_connection": "Social Connection",
-}
 
 st.set_page_config(page_title=f"{GAME_TITLE} - by {OWNER}", page_icon="🌊", layout="centered")
 
 # --------------------------------------------------------------------------
+# Interface text (English / Bengali)
+# --------------------------------------------------------------------------
+S = {
+    "en": {
+        "language": "Language",
+        "created_by": f"A game created by {OWNER}",
+        "intro1": "You are an ordinary person living an ordinary few days. Every small choice you make, "
+                  "from a missed bus to a coworker's request, sends a ripple through your mind and the "
+                  "people around you. There are no right answers, only consequences.",
+        "intro2": "Watch your four meters: **Mental Energy**, **Empathy**, **Anxiety Level** and "
+                  "**Social Connection**. The story is written live by AI, and every new game gives you a "
+                  "different character, setting and cast, so no two playthroughs are alike.",
+        "need_key": "Add your Gemini API key in the app Secrets (GEMINI_API_KEY) or in the sidebar to begin.",
+        "begin": "Begin",
+        "setting_scene": "Setting the scene...",
+        "check_key": "Check your API key and model name, then try again.",
+        "mind_status": "Mind Status",
+        "mental_energy": "Mental Energy",
+        "empathy": "Empathy",
+        "anxiety": "Anxiety Level",
+        "social_connection": "Social Connection",
+        "day_info": "Day {d} of {D}  |  Decision {i} of {I}  |  {t}",
+        "what_do": "What do you do?",
+        "do_else": "Do something else (type your own action)",
+        "describe": "Describe what you do",
+        "describe_warn": "Please describe your action first.",
+        "decide": "Decide",
+        "world_reacts": "The world reacts...",
+        "ripple": "The Ripple",
+        "insight": "Psychology insight",
+        "continue": "Continue",
+        "see_end": "See your ending",
+        "next_scene_gen": "Generating the next scene...",
+        "reflecting": "Reflecting on your journey...",
+        "made_it": "You made it through all {D} days.",
+        "your_ripple": "Your Ripple",
+        "takeaway": "Takeaway",
+        "thanks": f"Thank you for playing {GAME_TITLE}.",
+        "play_again": "Play again",
+        "footer": f"{GAME_TITLE} - a game created by **{OWNER}**",
+        "burnout": "BURNOUT: you ran out of mental energy. Every decision now feels impossible.",
+        "overwhelmed": "OVERWHELMED: the anxiety became too loud to think through. You need to stop and rest.",
+        "isolated": "ISOLATED: the people around you have drifted away, and the silence is heavy.",
+        "fallback_title": "The Quiet Observer",
+        "fallback_reflection": "Your choices rippled outward in ways you may only notice later.",
+        "fallback_takeaway": "Small decisions shape who we become.",
+    },
+    "bn": {
+        "language": "ভাষা",
+        "created_by": f"{OWNER}-এর তৈরি একটি গেম",
+        "intro1": "আপনি একজন সাধারণ মানুষ, যার সামনে সাধারণ কয়েকটি দিন। বাস মিস করা থেকে সহকর্মীর অনুরোধ, "
+                  "প্রতিটি ছোট সিদ্ধান্ত আপনার মনে এবং আপনার চারপাশের মানুষদের মধ্যে ঢেউ তোলে। "
+                  "এখানে কোনো সঠিক উত্তর নেই, আছে শুধু পরিণতি।",
+        "intro2": "চারটি মিটারের দিকে নজর রাখুন: **মানসিক শক্তি**, **সহানুভূতি**, **উদ্বেগ** এবং **সামাজিক বন্ধন**। "
+                  "গল্পটি সরাসরি এআই লেখে, আর প্রতিটি নতুন খেলায় থাকে আলাদা চরিত্র, পরিবেশ ও মানুষজন, "
+                  "তাই দুটি খেলা কখনো এক হয় না।",
+        "need_key": "শুরু করতে অ্যাপের Secrets-এ GEMINI_API_KEY যোগ করুন, অথবা সাইডবারে লিখুন।",
+        "begin": "শুরু করুন",
+        "setting_scene": "পরিবেশ তৈরি হচ্ছে...",
+        "check_key": "API key ও মডেলের নাম দেখে আবার চেষ্টা করুন।",
+        "mind_status": "মনের অবস্থা",
+        "mental_energy": "মানসিক শক্তি",
+        "empathy": "সহানুভূতি",
+        "anxiety": "উদ্বেগ",
+        "social_connection": "সামাজিক বন্ধন",
+        "day_info": "দিন {d}/{D}  |  সিদ্ধান্ত {i}/{I}  |  {t}",
+        "what_do": "আপনি কী করবেন?",
+        "do_else": "অন্য কিছু করব (নিজে লিখুন)",
+        "describe": "আপনি কী করবেন লিখুন",
+        "describe_warn": "আগে আপনার কাজটি লিখুন।",
+        "decide": "সিদ্ধান্ত নিন",
+        "world_reacts": "চারপাশ প্রতিক্রিয়া দেখাচ্ছে...",
+        "ripple": "ঢেউ",
+        "insight": "মনোবিজ্ঞানের অন্তর্দৃষ্টি",
+        "continue": "এগিয়ে চলুন",
+        "see_end": "আপনার সমাপ্তি দেখুন",
+        "next_scene_gen": "পরবর্তী দৃশ্য তৈরি হচ্ছে...",
+        "reflecting": "আপনার যাত্রা নিয়ে ভাবা হচ্ছে...",
+        "made_it": "আপনি সব {D} দিন পার করেছেন।",
+        "your_ripple": "আপনার ঢেউ",
+        "takeaway": "শিক্ষা",
+        "thanks": f"{GAME_TITLE} খেলার জন্য ধন্যবাদ।",
+        "play_again": "আবার খেলুন",
+        "footer": f"{GAME_TITLE} - **{OWNER}**-এর তৈরি একটি গেম",
+        "burnout": "বার্নআউট: আপনার মানসিক শক্তি শেষ। এখন প্রতিটি সিদ্ধান্তই অসম্ভব মনে হচ্ছে।",
+        "overwhelmed": "অভিভূত: উদ্বেগ এত বেড়ে গেছে যে আর ভাবা যাচ্ছে না। একটু থামা আর বিশ্রাম দরকার।",
+        "isolated": "একাকী: আপনার চারপাশের মানুষ ধীরে ধীরে দূরে সরে গেছে, আর নীরবতা ভারী হয়ে উঠেছে।",
+        "fallback_title": "নীরব দর্শক",
+        "fallback_reflection": "আপনার সিদ্ধান্তগুলো এমনভাবে ছড়িয়ে পড়েছে, যা হয়তো আপনি পরে বুঝবেন।",
+        "fallback_takeaway": "ছোট ছোট সিদ্ধান্তই আমাদের গড়ে তোলে।",
+    },
+}
+
+
+def lang():
+    gl = st.session_state.get("game_lang")
+    if gl:
+        return gl
+    return "bn" if st.session_state.get("lang_choice") == "বাংলা" else "en"
+
+
+def t(key, **kw):
+    text = S[lang()][key]
+    return text.format(**kw) if kw else text
+
+
+# --------------------------------------------------------------------------
 # Gemini
 # --------------------------------------------------------------------------
-SYSTEM_PROMPT = f"""You are the story engine of a text-based psychological life simulator called
-"{GAME_TITLE}" (created by {OWNER}). The player plays an ordinary person living an ordinary day.
-Everything is in English only.
+def system_prompt():
+    if lang() == "bn":
+        language_rule = (
+            "LANGUAGE: Write ALL player-facing text (time_of_day, narrative, choices, ripple, insight, "
+            "title, reflection, takeaway) in natural, simple, conversational Bengali (বাংলা) using Bengali "
+            "script. Write character names in Bengali script too. Keep JSON keys and the choice_tag value "
+            "in English exactly as specified."
+        )
+    else:
+        language_rule = "LANGUAGE: Write everything in English only."
+    return f"""You are the story engine of a text-based psychological life simulator called
+"{GAME_TITLE}" (created by {OWNER}). The player plays an ordinary Indian person living an ordinary day.
+{language_rule}
 
 Rules:
-- Scenes must be grounded, realistic everyday situations (commute, work, family, friends, money,
-  chores, small talk, social media, health, errands). No fantasy, no violence, no gore.
+- Scenes must be grounded, realistic everyday situations in an Indian context (local train, bus, metro,
+  auto-rickshaw, Uber/Ola, tea stall, office, power cut, WhatsApp family groups, festivals, neighbours,
+  rent, EMIs, rupees). No fantasy, no violence, no gore.
 - Every small decision carries a hidden "psychological tax". Show how it ripples into the
   player's mind, mood and the way people around them behave next.
 - Look at the player's recent decision pattern. If they repeatedly act selfishly, make
@@ -65,23 +179,23 @@ Rules:
   Anxiety. Make consequences feel earned, never preachy.
 - The four meters run 0-100: mental_energy, empathy, anxiety, social_connection.
   (Higher anxiety is WORSE; for the other three, higher is better.)
-- Offer exactly 3 distinct, believable choices per scene, with no obviously "correct" one.
+- Offer exactly 3 distinct, believable, SHORT choices per scene, with no obviously "correct" one.
 - Occasionally (about once per day) add a short, accurate "insight": a real psychology concept
-  or theory relevant to what just happened (for example decision fatigue, the bystander effect,
-  emotional contagion, cognitive dissonance, the spotlight effect, rumination, reciprocity).
-  Explain it in 1-2 plain sentences. Otherwise leave insight as an empty string.
-- Keep narration vivid but concise (3-5 sentences). Use second person ("you").
-- Always reply with ONLY a single valid JSON object. No markdown fences, no commentary."""
+  relevant to what just happened (decision fatigue, bystander effect, emotional contagion, cognitive
+  dissonance, spotlight effect, rumination, reciprocity...). 1-2 plain sentences. Otherwise use "".
+- Keep narration vivid but BRIEF (2-4 sentences). Use second person.
+- Reply with ONLY a single valid JSON object. No markdown fences, no commentary."""
+
 
 SCENE_SCHEMA = """{
   "time_of_day": "short label, e.g. 'Morning, 7:40 AM'",
-  "narrative": "3-5 sentences describing the current situation",
+  "narrative": "2-4 sentences describing the current situation",
   "choices": ["choice 1", "choice 2", "choice 3"]
 }"""
 
 TURN_SCHEMA = """{
   "choice_tag": "one of: selfish, kind, avoidant, assertive, impulsive, balanced",
-  "ripple": "2-4 sentences: the immediate psychological ripple of the player's decision",
+  "ripple": "2-3 sentences: the immediate psychological ripple of the player's decision",
   "deltas": {"mental_energy": int, "empathy": int, "anxiety": int, "social_connection": int},
   "insight": "1-2 sentence real psychology insight, or empty string",
   "next_scene": %s
@@ -101,6 +215,11 @@ def get_api_key():
     return key
 
 
+@st.cache_resource(show_spinner=False)
+def get_client(api_key):
+    return genai.Client(api_key=api_key)
+
+
 def extract_json(text):
     if not text:
         raise ValueError("Empty response")
@@ -111,71 +230,110 @@ def extract_json(text):
     return json.loads(text[start:end + 1])
 
 
+# Options tried for minimising "thinking" time (the biggest source of delay).
+THINKING_OPTIONS = [{"thinking_budget": 0}, {"thinking_level": "minimal"}, {"thinking_level": "low"}, None]
+
+
+def build_config(grounded):
+    kwargs = dict(system_instruction=system_prompt(), temperature=1.1, max_output_tokens=3000)
+    if grounded and USE_WEB_GROUNDING:
+        kwargs["tools"] = [types.Tool(google_search=types.GoogleSearch())]
+    else:
+        kwargs["response_mime_type"] = "application/json"
+    idx = st.session_state.get("thinking_idx", 0)
+    opt = THINKING_OPTIONS[idx]
+    if opt:
+        try:
+            kwargs["thinking_config"] = types.ThinkingConfig(**opt)
+        except Exception:
+            st.session_state.thinking_idx = min(idx + 1, len(THINKING_OPTIONS) - 1)
+            return build_config(grounded)
+    return types.GenerateContentConfig(**kwargs)
+
+
 def ask_gemini(prompt, grounded=False, retries=3):
-    client = genai.Client(api_key=st.session_state.api_key)
-    tools = [types.Tool(google_search=types.GoogleSearch())] if (grounded and USE_WEB_GROUNDING) else None
-    config = types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT, temperature=1.2, tools=tools)
+    client = get_client(st.session_state.api_key)
     last_err = None
     seen = []
     for model in MODEL_CANDIDATES:
         if model in seen:
             continue
         seen.append(model)
-        for attempt in range(1, retries + 1):
+        attempt = 0
+        while attempt < retries:
+            attempt += 1
             try:
-                resp = client.models.generate_content(model=model, contents=prompt, config=config)
+                resp = client.models.generate_content(model=model, contents=prompt,
+                                                      config=build_config(grounded))
                 return extract_json(resp.text)
             except Exception as err:
                 last_err = err
-                if "404" in str(err) or "NOT_FOUND" in str(err):
-                    break  # model unavailable: try the next candidate
+                msg = str(err)
+                low = msg.lower()
+                if "404" in msg or "NOT_FOUND" in msg:
+                    break  # model unavailable: try next candidate
+                if "thinking" in low:
+                    idx = st.session_state.get("thinking_idx", 0)
+                    if idx < len(THINKING_OPTIONS) - 1:
+                        st.session_state.thinking_idx = idx + 1
+                        attempt -= 1  # retry immediately with a different thinking setting
+                        continue
                 if attempt < retries:
-                    time.sleep(1.5 * attempt)
+                    time.sleep(0.8 * attempt)
     raise RuntimeError(f"Gemini request failed: {last_err}")
 
 
 # --------------------------------------------------------------------------
 # Randomised life profile (makes every new game different)
 # --------------------------------------------------------------------------
-FIRST_NAMES = ["Maya", "Arjun", "Elena", "Tom", "Priya", "Daniel", "Sofia", "Kenji", "Amara", "Luca",
-               "Hana", "Omar", "Ruth", "Diego", "Mei", "Samir", "Nora", "Felix", "Zara", "Jonas"]
-JOBS = ["junior graphic designer", "primary school teacher", "hospital pharmacist", "call-centre agent",
-        "freelance writer", "warehouse supervisor", "bank clerk", "software tester", "nurse",
-        "cafe barista and part-time student", "delivery driver", "accountant", "librarian",
-        "restaurant line cook", "government office clerk", "retail store manager"]
-SETTINGS = ["a crowded big city with a long commute", "a quiet mid-sized town", "a coastal town in monsoon season",
-            "a busy suburb full of apartment blocks", "a university city", "a small town where everyone knows everyone",
-            "a rainy northern city in late autumn", "a hot, humid city in a heatwave"]
-LIFE_SITUATIONS = ["living with their parents and saving money", "sharing a flat with two roommates",
-                   "newly married and still adjusting", "caring for an elderly relative",
-                   "recently moved and knowing few people", "living alone and slightly lonely",
-                   "raising a young child with a partner", "paying off a loan and watching every expense"]
-QUIRKS = ["overthinks every message they send", "hates confrontation", "says yes too easily",
-          "is always running slightly late", "keeps a spotless to-do list but rarely finishes it",
-          "worries about what others think", "is fiercely independent and hates asking for help",
-          "scrolls their phone when stressed", "is generous but quietly resentful when unappreciated"]
-CAST_ROLES = ["a chatty coworker", "a demanding manager", "a close old friend", "a neighbour",
-              "a younger sibling", "a parent", "a quiet new colleague", "a roommate", "a childhood friend",
-              "a shopkeeper they see daily", "a partner", "a cousin who always needs favours"]
-THEMES = ["commute or transport trouble", "a favour requested by someone", "money and small expenses",
-          "a conflict or tense conversation", "social media or phone temptation", "a family call or message",
-          "a chance to help a stranger", "workplace pressure or a deadline", "a friend's invitation",
-          "a health or tiredness choice", "a chore that keeps getting postponed", "an unexpected compliment or criticism",
-          "an awkward silence or misunderstanding", "food, sleep or routine decision", "a moment of loneliness or boredom",
-          "a promise made earlier coming due", "an overheard conversation", "a surprise change of plans"]
+FIRST_NAMES = ["Arnab", "Riya", "Subhojit", "Ananya", "Debashis", "Moumita", "Rahul", "Priya", "Sourav",
+               "Tanushree", "Imran", "Kavita", "Rohan", "Sneha", "Abhijit", "Swati", "Aditya", "Pooja",
+               "Soumya", "Ishita", "Partha", "Rituparna", "Vikram", "Meera", "Sayan", "Debjani", "Karthik",
+               "Nandini", "Anirban", "Farhana", "Rajesh", "Shreya", "Tuhin", "Lakshmi", "Biplab", "Aarav"]
+JOBS = ["school teacher", "bank clerk", "IT support engineer", "call-centre executive", "hospital pharmacist",
+        "junior accountant", "shop owner", "delivery rider", "government office clerk", "college lecturer",
+        "freelance graphic designer", "nurse", "sales executive", "software tester", "tuition teacher",
+        "medical representative", "railway staff member", "content writer"]
+SETTINGS = ["Kolkata, with a crowded local train and bus commute", "Siliguri, a busy town at the foot of the hills",
+            "Howrah, a packed industrial neighbourhood", "Pune, working near an IT park",
+            "Delhi, with a long metro commute and heavy pollution", "Bengaluru, stuck in heavy traffic",
+            "a small town in West Bengal where everyone knows everyone", "Chennai in monsoon season",
+            "Mumbai, with an overcrowded local train", "Durgapur, a steel-town with shift workers",
+            "Kolkata during the Durga Puja season", "a hot, humid city during a heatwave and power cuts"]
+LIFE_SITUATIONS = ["living with parents in a joint family", "sharing a rented flat with two roommates",
+                   "newly married and still adjusting to a new household", "caring for an elderly grandparent",
+                   "recently moved to the city and knowing few people", "living alone and feeling slightly lonely",
+                   "raising a young child with a partner", "paying an EMI and watching every rupee"]
+QUIRKS = ["overthinks every WhatsApp message", "hates confrontation", "says yes too easily",
+          "is always running slightly late", "keeps a perfect to-do list but rarely finishes it",
+          "worries about what relatives and neighbours think", "is fiercely independent and hates asking for help",
+          "scrolls the phone when stressed", "is generous but quietly resentful when unappreciated",
+          "cannot say no to family"]
+CAST_ROLES = ["a chatty neighbour (aunty)", "a demanding boss", "a close college friend", "a younger sibling",
+              "mother", "father", "a quiet new colleague", "a roommate", "a cousin who always needs favours",
+              "the tea-stall owner they see daily", "a spouse or partner", "a retired uncle from downstairs",
+              "an auto-rickshaw driver they often ride with", "a gossipy colleague"]
+THEMES = ["commute trouble (train, bus, auto, cab or traffic)", "a favour requested by someone",
+          "money and small expenses", "a tense conversation or conflict", "social media or phone temptation",
+          "a family call or the family WhatsApp group", "a chance to help a stranger",
+          "workplace pressure or a deadline", "a friend's invitation", "a tiredness, health or sleep choice",
+          "a chore that keeps getting postponed", "an unexpected compliment or criticism",
+          "an awkward silence or misunderstanding", "food or routine decision", "a moment of loneliness or boredom",
+          "a promise made earlier coming due", "an overheard conversation", "a surprise change of plans",
+          "a power cut, rain or festival crowd", "relatives asking about marriage, salary or career"]
 
 
 def new_profile():
     rng = random.Random()
-    cast = rng.sample(CAST_ROLES, 3)
     names = rng.sample(FIRST_NAMES, 4)
+    roles = rng.sample(CAST_ROLES, 3)
     return {
         "player_name": names[0],
         "job": rng.choice(JOBS),
         "setting": rng.choice(SETTINGS),
         "life": rng.choice(LIFE_SITUATIONS),
         "quirk": rng.choice(QUIRKS),
-        "cast": [f"{names[i + 1]} ({cast[i]})" for i in range(3)],
+        "cast": [f"{names[i + 1]} ({roles[i]})" for i in range(3)],
         "themes": rng.sample(THEMES, DAYS * SCENES_PER_DAY),
         "seed": uuid.uuid4().hex[:8],
     }
@@ -186,8 +344,9 @@ def profile_text():
     return (
         f"PLAYER CHARACTER (keep consistent all game): {p['player_name']}, a {p['job']}, living in "
         f"{p['setting']}, {p['life']}. Quirk: {p['quirk']}.\n"
-        f"RECURRING SUPPORTING CHARACTERS: {', '.join(p['cast'])}. Other people can appear too.\n"
-        f"Unique game seed (invent fresh details; never reuse a typical opening): {p['seed']}"
+        f"RECURRING SUPPORTING CHARACTERS (Indian names; keep these): {', '.join(p['cast'])}. "
+        f"Other people can appear too, always with Indian names.\n"
+        f"Unique game seed (invent fresh details; avoid a typical opening): {p['seed']}"
     )
 
 
@@ -200,7 +359,7 @@ def theme_for(day, idx):
 # --------------------------------------------------------------------------
 # Prompts
 # --------------------------------------------------------------------------
-def pattern_summary(last_n=8):
+def pattern_summary(last_n=6):
     hist = st.session_state.history[-last_n:]
     if not hist:
         return "No decisions yet."
@@ -232,7 +391,7 @@ def turn_prompt(scene, decision):
     last_of_game = last_of_day and s.day == DAYS
     if last_of_game:
         nxt = ("This was the FINAL decision of the whole game. Set next_scene to "
-               '{"time_of_day": "Night", "narrative": "A quiet closing reflection of 2-3 sentences", '
+               '{"time_of_day": "Night", "narrative": "A quiet closing reflection of 2 sentences", '
                '"choices": []}.')
     elif last_of_day:
         nxt = (f"This was the last decision of Day {s.day}. next_scene should be the start of "
@@ -250,8 +409,8 @@ def turn_prompt(scene, decision):
         f"Current situation: {scene['narrative']}\n"
         f"The player decided: \"{decision}\"\n\n"
         f"{nxt}\n"
-        f"Reflect the current meters in tone (high anxiety = tense, jumpy prose; low energy = foggy, "
-        f"slow prose; low social connection = loneliness, distance).\n"
+        f"Reflect the current meters in tone (high anxiety = tense prose; low energy = foggy, slow prose; "
+        f"low social connection = loneliness, distance).\n"
         f"Reply with ONLY JSON in this schema:\n{TURN_SCHEMA}"
     )
 
@@ -264,7 +423,7 @@ def ending_prompt():
         "Write a warm, honest, non-judgmental reflection on who this player was over these days. "
         "Reply with ONLY JSON: "
         '{"title": "a short personality-style title for this run", '
-        '"reflection": "4-6 sentences", '
+        '"reflection": "3-5 sentences", '
         '"takeaway": "one gentle real-world takeaway sentence"}'
     )
 
@@ -273,9 +432,11 @@ def ending_prompt():
 # State
 # --------------------------------------------------------------------------
 def reset_game():
+    # remember the language so the start screen opens with the same choice
+    st.session_state.default_lang_idx = 1 if st.session_state.get("game_lang") == "bn" else 0
+    st.session_state.game_lang = None
     rng = random.Random()
     st.session_state.profile = new_profile()
-    # starting meters vary a little each game
     st.session_state.meters = {
         "mental_energy": rng.randint(65, 90),
         "empathy": rng.randint(45, 75),
@@ -315,11 +476,11 @@ def apply_deltas(deltas):
 def crisis_ending():
     m = st.session_state.meters
     if m["mental_energy"] <= 0:
-        return "BURNOUT: you ran out of mental energy. Every decision now feels impossible."
+        return t("burnout")
     if m["anxiety"] >= 100:
-        return "OVERWHELMED: the anxiety became too loud to think through. You need to stop and rest."
+        return t("overwhelmed")
     if m["social_connection"] <= 0:
-        return "ISOLATED: the people around you have drifted away, and the silence is heavy."
+        return t("isolated")
     return None
 
 
@@ -328,11 +489,11 @@ def crisis_ending():
 # --------------------------------------------------------------------------
 def footer():
     st.divider()
-    st.caption(f"{GAME_TITLE} - a game created by **{OWNER}**")
+    st.caption(t("footer"))
 
 
 def show_meters(applied=None):
-    st.markdown("##### Mind Status")
+    st.markdown(f"##### {t('mind_status')}")
     cols = st.columns(4)
     for col, m in zip(cols, METERS):
         val = st.session_state.meters[m]
@@ -340,35 +501,34 @@ def show_meters(applied=None):
         if applied and applied.get(m):
             delta = f"{applied[m]:+d}"
         with col:
-            st.metric(METER_LABELS[m], val, delta=delta,
-                      delta_color="inverse" if m == "anxiety" else "normal")
+            st.metric(t(m), val, delta=delta, delta_color="inverse" if m == "anxiety" else "normal")
             st.progress(val / 100)
 
 
 def screen_title():
+    st.radio(t("language") + " / ভাষা", ["English", "বাংলা"], horizontal=True, key="lang_choice",
+             index=st.session_state.get("default_lang_idx", 0))
     st.markdown(f"<h1 style='text-align:center;margin-bottom:0'>{GAME_TITLE}</h1>", unsafe_allow_html=True)
     st.markdown(f"<p style='text-align:center;font-size:1.2rem;margin-top:0'><i>{SUBTITLE}</i></p>",
                 unsafe_allow_html=True)
-    st.markdown(f"<h4 style='text-align:center'>A game created by {OWNER}</h4>", unsafe_allow_html=True)
+    st.markdown(f"<h4 style='text-align:center'>{t('created_by')}</h4>", unsafe_allow_html=True)
     st.divider()
-    st.write("You are an ordinary person living an ordinary few days. Every small choice you make, "
-             "from a missed bus to a coworker's request, sends a ripple through your mind and the "
-             "people around you. There are no right answers, only consequences.")
-    st.write("Watch your four meters: **Mental Energy**, **Empathy**, **Anxiety Level** and "
-             "**Social Connection**. The story is written live by AI, and every new game gives you a "
-             "different character, setting and cast, so no two playthroughs are alike.")
+    st.write(t("intro1"))
+    st.write(t("intro2"))
 
     if not st.session_state.api_key:
-        st.info("Add your Gemini API key in the app Secrets (GEMINI_API_KEY) or in the sidebar to begin.")
+        st.info(t("need_key"))
         return
-    if st.button("Begin", type="primary", use_container_width=True):
-        with st.spinner("Setting the scene..."):
+    if st.button(t("begin"), type="primary", use_container_width=True):
+        st.session_state.game_lang = lang()
+        with st.spinner(t("setting_scene")):
             try:
                 st.session_state.scene = ask_gemini(scene_prompt(1, 1))
                 st.session_state.phase = "scene"
                 st.rerun()
             except RuntimeError as err:
-                st.error(f"{err}\n\nCheck your API key and model name, then try again.")
+                st.session_state.game_lang = None
+                st.error(f"{err}\n\n{t('check_key')}")
 
 
 def screen_scene():
@@ -376,24 +536,23 @@ def screen_scene():
     scene = s.scene
     show_meters()
     st.divider()
-    st.caption(f"Day {s.day} of {DAYS}  |  Decision {s.scene_in_day} of {SCENES_PER_DAY}  |  "
-               f"{scene.get('time_of_day', '')}")
+    st.caption(t("day_info", d=s.day, D=DAYS, i=s.scene_in_day, I=SCENES_PER_DAY,
+                 t=scene.get("time_of_day", "")))
     st.write(scene["narrative"])
 
     choices = scene["choices"][:3]
-    options = choices + ["Do something else (type your own action)"]
-    pick = st.radio("What do you do?", options, index=None, key=f"pick_{s.day}_{s.scene_in_day}")
+    options = choices + [t("do_else")]
+    pick = st.radio(t("what_do"), options, index=None, key=f"pick_{s.day}_{s.scene_in_day}")
     custom = ""
     if pick == options[-1]:
-        custom = st.text_input("Describe what you do", max_chars=300,
-                               key=f"custom_{s.day}_{s.scene_in_day}")
+        custom = st.text_input(t("describe"), max_chars=300, key=f"custom_{s.day}_{s.scene_in_day}")
 
-    if st.button("Decide", type="primary", disabled=pick is None):
+    if st.button(t("decide"), type="primary", disabled=pick is None):
         decision = custom.strip() if pick == options[-1] else pick
         if not decision:
-            st.warning("Please describe your action first.")
+            st.warning(t("describe_warn"))
             return
-        with st.spinner("The world reacts..."):
+        with st.spinner(t("world_reacts")):
             try:
                 result = ask_gemini(turn_prompt(scene, decision), grounded=True)
             except RuntimeError as err:
@@ -411,23 +570,23 @@ def screen_scene():
 def screen_ripple():
     s = st.session_state
     result = s.result
-    st.markdown("#### The Ripple")
+    st.markdown(f"#### {t('ripple')}")
     st.write(result.get("ripple", ""))
     insight = (result.get("insight") or "").strip()
     if insight:
-        st.info(f"**Psychology insight:** {insight}")
+        st.info(f"**{t('insight')}:** {insight}")
     st.divider()
     show_meters(s.applied)
     st.divider()
 
     last_of_game = s.day == DAYS and s.scene_in_day == SCENES_PER_DAY
     if s.ending_note or last_of_game:
-        if st.button("See your ending", type="primary", use_container_width=True):
+        if st.button(t("see_end"), type="primary", use_container_width=True):
             s.phase = "end"
             st.rerun()
         return
 
-    if st.button("Continue", type="primary", use_container_width=True):
+    if st.button(t("continue"), type="primary", use_container_width=True):
         nxt = result.get("next_scene") or {}
         new_day = s.scene_in_day == SCENES_PER_DAY
         new_day_no = s.day + 1 if new_day else s.day
@@ -436,7 +595,7 @@ def screen_ripple():
             s.meters["mental_energy"] = min(100, s.meters["mental_energy"] + 15)
             s.meters["anxiety"] = max(0, s.meters["anxiety"] - 5)
         if not nxt.get("narrative") or len(nxt.get("choices", [])) < 3:
-            with st.spinner("Generating the next scene..."):
+            with st.spinner(t("next_scene_gen")):
                 try:
                     nxt = ask_gemini(scene_prompt(new_day_no, new_idx))
                 except RuntimeError as err:
@@ -451,28 +610,28 @@ def screen_ripple():
 def screen_end():
     s = st.session_state
     if s.end_data is None:
-        with st.spinner("Reflecting on your journey..."):
+        with st.spinner(t("reflecting")):
             try:
                 s.end_data = ask_gemini(ending_prompt())
             except RuntimeError:
                 s.end_data = {
-                    "title": "The Quiet Observer",
-                    "reflection": "Your choices rippled outward in ways you may only notice later.",
-                    "takeaway": "Small decisions shape who we become.",
+                    "title": t("fallback_title"),
+                    "reflection": t("fallback_reflection"),
+                    "takeaway": t("fallback_takeaway"),
                 }
     end = s.end_data
     if s.ending_note:
         st.error(s.ending_note)
     else:
-        st.success(f"You made it through all {DAYS} days.")
-    st.markdown(f"## Your Ripple: {end.get('title', '')}")
+        st.success(t("made_it", D=DAYS))
+    st.markdown(f"## {t('your_ripple')}: {end.get('title', '')}")
     st.write(end.get("reflection", ""))
-    st.markdown(f"**Takeaway:** {end.get('takeaway', '')}")
+    st.markdown(f"**{t('takeaway')}:** {end.get('takeaway', '')}")
     st.divider()
     show_meters()
-    st.markdown(f"<p style='text-align:center'>Thank you for playing {GAME_TITLE}.<br>"
-                f"<b>A game created by {OWNER}.</b></p>", unsafe_allow_html=True)
-    if st.button("Play again", type="primary", use_container_width=True):
+    st.markdown(f"<p style='text-align:center'>{t('thanks')}<br><b>{t('created_by')}.</b></p>",
+                unsafe_allow_html=True)
+    if st.button(t("play_again"), type="primary", use_container_width=True):
         reset_game()
         st.rerun()
 
