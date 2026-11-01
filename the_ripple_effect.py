@@ -12,6 +12,7 @@ import random
 import re
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 
 import streamlit as st
 from google import genai
@@ -34,10 +35,10 @@ def _configured_model():
 
 
 # Tried in order; a model that returns 404 is skipped automatically.
-MODEL_CANDIDATES = [_configured_model(), "gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-flash-latest"]
+MODEL_CANDIDATES = list(dict.fromkeys(
+    [_configured_model(), "gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-flash-latest"]))
 DAYS = 3
 SCENES_PER_DAY = 5
-USE_WEB_GROUNDING = False  # True = live web lookups for insights (much slower)
 SHOW_DIAGNOSTICS = True    # shows model name and response time in the sidebar; set False to hide
 
 METERS = ["mental_energy", "empathy", "anxiety", "social_connection"]
@@ -49,7 +50,6 @@ st.set_page_config(page_title=f"{GAME_TITLE} - by {OWNER}", page_icon="🌊", la
 # --------------------------------------------------------------------------
 S = {
     "en": {
-        "language": "Language",
         "created_by": f"A game created by {OWNER}",
         "intro1": "You are an ordinary person living an ordinary few days. Every small choice you make, "
                   "from a missed bus to a coworker's request, sends a ripple through your mind and the "
@@ -57,6 +57,7 @@ S = {
         "intro2": "Watch your four meters: **Mental Energy**, **Empathy**, **Anxiety Level** and "
                   "**Social Connection**. The story is written live by AI, and every new game gives you a "
                   "different character, setting and cast, so no two playthroughs are alike.",
+        "speed_tip": "Tip: English replies are generated faster than Bengali.",
         "need_key": "Add your Gemini API key in the app Secrets (GEMINI_API_KEY) or in the sidebar to begin.",
         "begin": "Begin",
         "setting_scene": "Setting the scene...",
@@ -77,7 +78,7 @@ S = {
         "insight": "Psychology insight",
         "continue": "Continue",
         "see_end": "See your ending",
-        "next_scene_gen": "Generating the next scene...",
+        "next_scene_gen": "Loading the next scene...",
         "reflecting": "Reflecting on your journey...",
         "made_it": "You made it through all {D} days.",
         "your_ripple": "Your Ripple",
@@ -93,7 +94,6 @@ S = {
         "fallback_takeaway": "Small decisions shape who we become.",
     },
     "bn": {
-        "language": "ভাষা",
         "created_by": f"{OWNER}-এর তৈরি একটি গেম",
         "intro1": "আপনি একজন সাধারণ মানুষ, যার সামনে সাধারণ কয়েকটি দিন। বাস মিস করা থেকে সহকর্মীর অনুরোধ, "
                   "প্রতিটি ছোট সিদ্ধান্ত আপনার মনে এবং আপনার চারপাশের মানুষদের মধ্যে ঢেউ তোলে। "
@@ -101,6 +101,7 @@ S = {
         "intro2": "চারটি মিটারের দিকে নজর রাখুন: **মানসিক শক্তি**, **সহানুভূতি**, **উদ্বেগ** এবং **সামাজিক বন্ধন**। "
                   "গল্পটি সরাসরি এআই লেখে, আর প্রতিটি নতুন খেলায় থাকে আলাদা চরিত্র, পরিবেশ ও মানুষজন, "
                   "তাই দুটি খেলা কখনো এক হয় না।",
+        "speed_tip": "পরামর্শ: ইংরেজিতে উত্তর বাংলার চেয়ে দ্রুত তৈরি হয়।",
         "need_key": "শুরু করতে অ্যাপের Secrets-এ GEMINI_API_KEY যোগ করুন, অথবা সাইডবারে লিখুন।",
         "begin": "শুরু করুন",
         "setting_scene": "পরিবেশ তৈরি হচ্ছে...",
@@ -121,7 +122,7 @@ S = {
         "insight": "মনোবিজ্ঞানের অন্তর্দৃষ্টি",
         "continue": "এগিয়ে চলুন",
         "see_end": "আপনার সমাপ্তি দেখুন",
-        "next_scene_gen": "পরবর্তী দৃশ্য তৈরি হচ্ছে...",
+        "next_scene_gen": "পরবর্তী দৃশ্য আনা হচ্ছে...",
         "reflecting": "আপনার যাত্রা নিয়ে ভাবা হচ্ছে...",
         "made_it": "আপনি সব {D} দিন পার করেছেন।",
         "your_ripple": "আপনার ঢেউ",
@@ -184,23 +185,22 @@ Rules:
 - Occasionally (about once per day) add a short, accurate "insight": a real psychology concept
   relevant to what just happened (decision fatigue, bystander effect, emotional contagion, cognitive
   dissonance, spotlight effect, rumination, reciprocity...). 1-2 plain sentences. Otherwise use "".
-- Keep narration vivid but BRIEF (2-4 sentences). Use second person.
+- Keep everything BRIEF: narration 2-3 sentences, ripple 2 sentences. Use second person.
 - Reply with ONLY a single valid JSON object. No markdown fences, no commentary."""
 
 
 SCENE_SCHEMA = """{
   "time_of_day": "short label, e.g. 'Morning, 7:40 AM'",
-  "narrative": "2-4 sentences describing the current situation",
+  "narrative": "2-3 sentences describing the current situation",
   "choices": ["choice 1", "choice 2", "choice 3"]
 }"""
 
 TURN_SCHEMA = """{
   "choice_tag": "one of: selfish, kind, avoidant, assertive, impulsive, balanced",
-  "ripple": "2-3 sentences: the immediate psychological ripple of the player's decision",
+  "ripple": "2 sentences: the immediate psychological ripple of the player's decision",
   "deltas": {"mental_energy": int, "empathy": int, "anxiety": int, "social_connection": int},
-  "insight": "1-2 sentence real psychology insight, or empty string",
-  "next_scene": %s
-}""" % SCENE_SCHEMA
+  "insight": "1-2 sentence real psychology insight, or empty string"
+}"""
 
 
 def get_api_key():
@@ -221,6 +221,11 @@ def get_client(api_key):
     return genai.Client(api_key=api_key)
 
 
+@st.cache_resource(show_spinner=False)
+def get_executor():
+    return ThreadPoolExecutor(max_workers=4)
+
+
 def extract_json(text):
     if not text:
         raise ValueError("Empty response")
@@ -231,65 +236,73 @@ def extract_json(text):
     return json.loads(text[start:end + 1])
 
 
-# Options tried for minimising "thinking" time (the biggest source of delay).
+# Options tried for minimising "thinking" time (a big source of delay).
 THINKING_OPTIONS = [{"thinking_budget": 0}, {"thinking_level": "minimal"}, {"thinking_level": "low"}, None]
 
 
-def build_config(grounded):
-    kwargs = dict(system_instruction=system_prompt(), temperature=1.1, max_output_tokens=3000)
-    if grounded and USE_WEB_GROUNDING:
-        kwargs["tools"] = [types.Tool(google_search=types.GoogleSearch())]
-    else:
-        kwargs["response_mime_type"] = "application/json"
-    idx = st.session_state.get("thinking_idx", 0)
-    opt = THINKING_OPTIONS[idx]
-    if opt:
-        try:
-            kwargs["thinking_config"] = types.ThinkingConfig(**opt)
-        except Exception:
-            st.session_state.thinking_idx = min(idx + 1, len(THINKING_OPTIONS) - 1)
-            return build_config(grounded)
-    return types.GenerateContentConfig(**kwargs)
+def make_configs():
+    """Build the list of generation configs (most-preferred first). Must run in the main thread."""
+    base = dict(system_instruction=system_prompt(), temperature=1.1, max_output_tokens=3000,
+                response_mime_type="application/json")
+    start = st.session_state.get("thinking_idx", 0)
+    configs = []
+    for opt in THINKING_OPTIONS[start:]:
+        kw = dict(base)
+        if opt:
+            try:
+                kw["thinking_config"] = types.ThinkingConfig(**opt)
+            except Exception:
+                continue
+        configs.append(types.GenerateContentConfig(**kw))
+    return configs
 
 
-def ask_gemini(prompt, grounded=False, retries=3):
-    client = get_client(st.session_state.api_key)
-    last_err = None
-    seen = []
-    for model in MODEL_CANDIDATES:
-        if model in seen:
-            continue
-        seen.append(model)
+def call_models(client, prompt, configs, models, retries=3):
+    """Pure function (no Streamlit access) so it can also run in a background thread."""
+    last = None
+    for model in models:
+        ci = 0
         attempt = 0
-        while attempt < retries:
+        while attempt < retries and ci < len(configs):
             attempt += 1
             try:
                 t0 = time.time()
-                resp = client.models.generate_content(model=model, contents=prompt,
-                                                      config=build_config(grounded))
+                resp = client.models.generate_content(model=model, contents=prompt, config=configs[ci])
                 data = extract_json(resp.text)
-                st.session_state.last_call = {
-                    "model": model,
-                    "seconds": round(time.time() - t0, 1),
-                    "thinking": THINKING_OPTIONS[st.session_state.get("thinking_idx", 0)],
-                    "attempt": attempt,
-                }
-                return data
+                return data, {"model": model, "seconds": round(time.time() - t0, 1),
+                              "cfg_idx": ci, "attempt": attempt}
             except Exception as err:
-                last_err = err
+                last = err
                 msg = str(err)
-                low = msg.lower()
                 if "404" in msg or "NOT_FOUND" in msg:
-                    break  # model unavailable: try next candidate
-                if "thinking" in low:
-                    idx = st.session_state.get("thinking_idx", 0)
-                    if idx < len(THINKING_OPTIONS) - 1:
-                        st.session_state.thinking_idx = idx + 1
-                        attempt -= 1  # retry immediately with a different thinking setting
-                        continue
+                    break  # model unavailable: try the next one
+                if "thinking" in msg.lower() and ci < len(configs) - 1:
+                    ci += 1
+                    attempt -= 1
+                    continue
                 if attempt < retries:
                     time.sleep(0.8 * attempt)
-    raise RuntimeError(f"Gemini request failed: {last_err}")
+    raise RuntimeError(f"Gemini request failed: {last}")
+
+
+def record_info(info):
+    st.session_state.thinking_idx = st.session_state.get("thinking_idx", 0) + info["cfg_idx"]
+    st.session_state.last_call = {
+        "model": info["model"], "seconds": info["seconds"], "attempt": info["attempt"],
+        "thinking": THINKING_OPTIONS[min(st.session_state.thinking_idx, len(THINKING_OPTIONS) - 1)],
+    }
+
+
+def ask_gemini(prompt):
+    client = get_client(st.session_state.api_key)
+    data, info = call_models(client, prompt, make_configs(), MODEL_CANDIDATES)
+    record_info(info)
+    return data
+
+
+def start_prefetch(prompt):
+    client = get_client(st.session_state.api_key)
+    return get_executor().submit(call_models, client, prompt, make_configs(), MODEL_CANDIDATES)
 
 
 # --------------------------------------------------------------------------
@@ -385,41 +398,28 @@ def meters_text():
     return ", ".join(f"{k}={m[k]}" for k in METERS)
 
 
-def scene_prompt(day, idx):
-    return (f"It is Day {day}, scene {idx} of {SCENES_PER_DAY}. "
+def scene_prompt(day, idx, recent=""):
+    morning = ("This is the morning of a new day; reflect how the previous day's choices carried over. "
+               if (idx == 1 and day > 1) else "")
+    return (f"It is Day {day}, scene {idx} of {SCENES_PER_DAY}. {morning}"
             f"{profile_text()}\n"
             f"Current meters: {meters_text()}\nPlayer decision pattern:\n{pattern_summary()}\n"
+            f"{recent}\n"
             f"Write an ordinary everyday situation fitting that moment of the day. "
+            f"Let the tone reflect the meters (high anxiety = tense, low energy = foggy, "
+            f"low social connection = lonely). "
             f"Suggested theme for this scene: {theme_for(day, idx)}. "
             f"Reply with ONLY JSON in this schema:\n{SCENE_SCHEMA}")
 
 
 def turn_prompt(scene, decision):
-    s = st.session_state
-    last_of_day = s.scene_in_day == SCENES_PER_DAY
-    last_of_game = last_of_day and s.day == DAYS
-    if last_of_game:
-        nxt = ("This was the FINAL decision of the whole game. Set next_scene to "
-               '{"time_of_day": "Night", "narrative": "A quiet closing reflection of 2 sentences", '
-               '"choices": []}.')
-    elif last_of_day:
-        nxt = (f"This was the last decision of Day {s.day}. next_scene should be the start of "
-               f"Day {s.day + 1} (morning), reflecting how the player's choices carried over.")
-    else:
-        nxt = (f"next_scene is decision {s.scene_in_day + 1} of {SCENES_PER_DAY} on Day "
-               f"{s.day}, progressing naturally through the day.")
-    if not last_of_game:
-        nd, ni = (s.day + 1, 1) if last_of_day else (s.day, s.scene_in_day + 1)
-        nxt += f" Suggested theme for next_scene: {theme_for(nd, ni)}."
     return (
         f"{profile_text()}\n"
         f"Current meters: {meters_text()}\n"
         f"Player decision pattern:\n{pattern_summary()}\n\n"
         f"Current situation: {scene['narrative']}\n"
         f"The player decided: \"{decision}\"\n\n"
-        f"{nxt}\n"
-        f"Reflect the current meters in tone (high anxiety = tense prose; low energy = foggy, slow prose; "
-        f"low social connection = loneliness, distance).\n"
+        f"Describe the psychological ripple of this decision and the meter changes.\n"
         f"Reply with ONLY JSON in this schema:\n{TURN_SCHEMA}"
     )
 
@@ -441,7 +441,6 @@ def ending_prompt():
 # State
 # --------------------------------------------------------------------------
 def reset_game():
-    # remember the language so the start screen opens with the same choice
     st.session_state.default_lang_idx = 1 if st.session_state.get("game_lang") == "bn" else 0
     st.session_state.game_lang = None
     rng = random.Random()
@@ -460,6 +459,7 @@ def reset_game():
     st.session_state.applied = {}
     st.session_state.ending_note = None
     st.session_state.end_data = None
+    st.session_state.prefetch = None
     st.session_state.phase = "title"
 
 
@@ -493,6 +493,10 @@ def crisis_ending():
     return None
 
 
+def valid_scene(sc):
+    return isinstance(sc, dict) and sc.get("narrative") and len(sc.get("choices", [])) >= 3
+
+
 # --------------------------------------------------------------------------
 # UI pieces
 # --------------------------------------------------------------------------
@@ -515,7 +519,7 @@ def show_meters(applied=None):
 
 
 def screen_title():
-    st.radio(t("language") + " / ভাষা", ["English", "বাংলা"], horizontal=True, key="lang_choice",
+    st.radio("Language / ভাষা", ["English", "বাংলা"], horizontal=True, key="lang_choice",
              index=st.session_state.get("default_lang_idx", 0))
     st.markdown(f"<h1 style='text-align:center;margin-bottom:0'>{GAME_TITLE}</h1>", unsafe_allow_html=True)
     st.markdown(f"<p style='text-align:center;font-size:1.2rem;margin-top:0'><i>{SUBTITLE}</i></p>",
@@ -524,6 +528,7 @@ def screen_title():
     st.divider()
     st.write(t("intro1"))
     st.write(t("intro2"))
+    st.caption(t("speed_tip"))
 
     if not st.session_state.api_key:
         st.info(t("need_key"))
@@ -563,7 +568,7 @@ def screen_scene():
             return
         with st.spinner(t("world_reacts")):
             try:
-                result = ask_gemini(turn_prompt(scene, decision), grounded=True)
+                result = ask_gemini(turn_prompt(scene, decision))
             except RuntimeError as err:
                 st.error(str(err))
                 return
@@ -572,6 +577,16 @@ def screen_scene():
         s.applied = apply_deltas(result.get("deltas", {}))
         s.result = result
         s.ending_note = crisis_ending()
+
+        # Start writing the next scene in the background while the player reads the ripple.
+        s.prefetch = None
+        last_of_game = s.day == DAYS and s.scene_in_day == SCENES_PER_DAY
+        if not s.ending_note and not last_of_game:
+            new_day = s.scene_in_day == SCENES_PER_DAY
+            nd = s.day + 1 if new_day else s.day
+            ni = 1 if new_day else s.scene_in_day + 1
+            recent = (f'The player just decided: "{decision}". Ripple: {result.get("ripple", "")}')
+            s.prefetch = {"future": start_prefetch(scene_prompt(nd, ni, recent)), "day": nd, "idx": ni}
         s.phase = "ripple"
         st.rerun()
 
@@ -596,22 +611,33 @@ def screen_ripple():
         return
 
     if st.button(t("continue"), type="primary", use_container_width=True):
-        nxt = result.get("next_scene") or {}
+        pf = s.prefetch
         new_day = s.scene_in_day == SCENES_PER_DAY
         new_day_no = s.day + 1 if new_day else s.day
         new_idx = 1 if new_day else s.scene_in_day + 1
-        if new_day:
-            s.meters["mental_energy"] = min(100, s.meters["mental_energy"] + 15)
-            s.meters["anxiety"] = max(0, s.meters["anxiety"] - 5)
-        if not nxt.get("narrative") or len(nxt.get("choices", [])) < 3:
-            with st.spinner(t("next_scene_gen")):
+
+        nxt = None
+        with st.spinner(t("next_scene_gen")):
+            if pf:
+                try:
+                    data, info = pf["future"].result(timeout=120)
+                    record_info(info)
+                    nxt = data
+                except Exception:
+                    nxt = None
+            if not valid_scene(nxt):
                 try:
                     nxt = ask_gemini(scene_prompt(new_day_no, new_idx))
                 except RuntimeError as err:
                     st.error(str(err))
                     return
+
+        if new_day:  # a night's sleep: partial recovery
+            s.meters["mental_energy"] = min(100, s.meters["mental_energy"] + 15)
+            s.meters["anxiety"] = max(0, s.meters["anxiety"] - 5)
         s.scene = nxt
         s.day, s.scene_in_day = new_day_no, new_idx
+        s.prefetch = None
         s.phase = "scene"
         st.rerun()
 
@@ -666,7 +692,7 @@ if SHOW_DIAGNOSTICS:
     lc = st.session_state.get("last_call")
     with st.sidebar:
         st.markdown("**Diagnostics**")
-        st.caption("Models tried in order: " + ", ".join(dict.fromkeys(MODEL_CANDIDATES)))
+        st.caption("Models tried in order: " + ", ".join(MODEL_CANDIDATES))
         if lc:
             st.caption(f"Last call: model `{lc['model']}`, {lc['seconds']} s, "
                        f"thinking setting {lc['thinking']}, attempt {lc['attempt']}")
