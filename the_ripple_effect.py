@@ -28,14 +28,14 @@ def _configured_model():
         m = st.secrets.get("GEMINI_MODEL")
     except Exception:
         m = None
-    return m or os.environ.get("GEMINI_MODEL") or "gemini-3.8-flash"
+    return m or os.environ.get("GEMINI_MODEL") or "gemini-3.5-flash-lite"
 
 
 # Tried in order; a model that returns 404 is skipped automatically.
-MODEL_CANDIDATES = [_configured_model(), "gemini-3.8-flash", "gemini-flash-latest"]
+MODEL_CANDIDATES = [_configured_model(), "gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-flash-latest"]
 DAYS = 3
 SCENES_PER_DAY = 5
-USE_WEB_GROUNDING = True
+USE_WEB_GROUNDING = False  # True adds live web lookups for psychology insights but makes each turn much slower
 
 METERS = ["mental_energy", "empathy", "anxiety", "social_connection"]
 METER_LABELS = {
