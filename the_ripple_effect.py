@@ -246,7 +246,8 @@ def extract_json(text):
 
 
 # Options tried for minimising "thinking" time (a big source of delay).
-THINKING_OPTIONS = [{"thinking_budget": 0}, {"thinking_level": "minimal"}, {"thinking_level": "low"}, None]
+# The last entry, "bare", sends only the system prompt (no JSON mode, no extra settings) as a final fallback.
+THINKING_OPTIONS = [{"thinking_budget": 0}, {"thinking_level": "minimal"}, {"thinking_level": "low"}, None, "bare"]
 
 
 def make_configs():
@@ -256,12 +257,15 @@ def make_configs():
     start = st.session_state.get("thinking_idx", 0)
     configs = []
     for opt in THINKING_OPTIONS[start:]:
+        if opt == "bare":
+            configs.append(types.GenerateContentConfig(system_instruction=system_prompt()))
+            continue
         kw = dict(base)
         if opt:
             try:
                 kw["thinking_config"] = types.ThinkingConfig(**opt)
             except Exception:
-                continue
+                pass  # this SDK version doesn't know the option: send without it
         configs.append(types.GenerateContentConfig(**kw))
     return configs
 
@@ -279,7 +283,7 @@ def short_reason(msg):
         return "404 model not available"
     if _is_quota(msg):
         return "429 daily/minute quota used up"
-    return msg[:90]
+    return msg[:250]
 
 
 def call_models(client, prompt, configs, models, retries=2):
@@ -305,7 +309,8 @@ def call_models(client, prompt, configs, models, retries=2):
                 failed_reason = short_reason(msg)
                 if _is_missing(msg) or _is_quota(msg):
                     break
-                if "thinking" in msg.lower() and ci < len(configs) - 1:
+                bad_arg = "400" in msg or "INVALID_ARGUMENT" in msg
+                if (bad_arg or "thinking" in msg.lower()) and ci < len(configs) - 1:
                     ci += 1
                     attempt -= 1
                     continue
